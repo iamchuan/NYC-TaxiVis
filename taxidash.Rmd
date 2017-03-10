@@ -1,0 +1,172 @@
+---
+title: "NYC Taxi Monitor"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    social: menu
+    source_code: embed
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+library(leaflet)
+library(leaflet.extras)
+
+taxidata <- reactive(readRDS("./data/taxi_2016-01.rds"))
+
+taxi_pickup <- reactive({
+  taxidata()[tpep_pickup_datetime %between% as.character(strptime(paste(input$date, input$hour), 
+                                                                  format = "%Y-%m-%d %H"))]
+})
+
+taxi_dropoff <- reactive({
+  taxidata()[tpep_dropoff_datetime %between% as.character(strptime(paste(input$date, input$hour),
+                                                                  format = "%Y-%m-%d %H"))]
+})
+
+taxi_selected <- reactive({
+  if(input$type == "pickup") {
+    taxi_pickup() %>%
+      .[,c(1,3,4,5)] %>%
+      setnames(., 
+               old = c("pickup_longitude", "pickup_latitude"),
+               new = c("longitude", "latitude"))
+      
+  } else {
+    taxi_dropoff() %>%
+      .[,c(2,3,6,7)] %>%
+      setnames(., 
+               old = c("dropoff_longitude", "dropoff_latitude"),
+               new = c("longitude", "latitude"))
+  }
+})
+```
+
+Sidebar {.sidebar}
+=======================================================================
+
+### Select date and time range
+
+
+```{r}
+dateInput(inputId = "date",
+          label = "Select Date", 
+          value = "2016-01-01", 
+          min = "2016-01-01",
+          max = "2016-03-31") 
+
+sliderInput(inputId = "hour", 
+            label = "Select Time Range", 
+            value = c(0, 6), 
+            min = 0, 
+            max = 23, 
+            step = 1, 
+            ticks = FALSE, 
+            animate = TRUE)
+
+radioButtons(inputId = "type", 
+             label = "Choose Type", 
+             choices = c("pickup", "dropoff"), 
+             selected = "pickup")
+
+```
+
+
+Dashboard
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Hourly Pickup Rate {.value-box}
+
+```{r}
+renderValueBox({
+  total <- taxi_pickup() %>%
+    .[,.N] / (input$hour[2] - input$hour[1] + 1)
+  valueBox(
+    value = round(total),
+    icon = "fa-cloud-upload",
+    color = ifelse(total < 9000, 
+                   "primary",
+                   ifelse(total < 18000,
+                          "warning", 
+                          "danger"))
+  )
+})
+```
+
+### Hourly Dropoff Rate {.value-box}
+
+```{r}
+renderValueBox({
+  total <- taxi_dropoff() %>%
+    .[,.N] / (input$hour[2] - input$hour[1] + 1)
+  valueBox(
+    value = round(total),
+    icon = "fa-cloud-download",
+    color = ifelse(total < 9000, 
+                   "primary",
+                   ifelse(total < 18000,
+                          "warning", 
+                          "danger"))
+  )
+})
+```
+
+### Hourly Passengers{.value-box}
+
+```{r}
+renderValueBox({
+  total = taxi_selected() %>%
+      .[, sum(passenger_count)] / (input$hour[2] - input$hour[1] + 1)
+  valueBox(
+    value = paste(input$type, round(total)),
+    icon = "fa-users",
+    color = ifelse(total < 18000, 
+                   "primary",
+                   ifelse(total < 36000,
+                          "warning", 
+                          "danger"))
+  )
+})
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### Pickup / Dropoff Heatmap {data-width=700}
+
+```{r}
+renderLeaflet({
+  map <- leaflet(data = taxi_selected()[sample(.N, size = .N/10)]) %>%
+    setView(lng = -73.9712,lat = 40.7831, zoom = 12) %>%
+    addProviderTiles(providers$CartoDB.DarkMatter) %>%
+    addWebGLHeatmap(lng = ~longitude,
+                    lat = ~latitude,
+                    size = 200)
+})
+```
+
+### Statistics {data-width=340}
+
+```{r}
+
+```
+
+
+Data
+=======================================================================
+
+### Data
+
+```{r}
+DT::renderDataTable({
+  DT::datatable(taxi_selected())
+})
+```
