@@ -1,4 +1,4 @@
-## taxiVisNYC TaxiVis
+## NYC TaxiVis
 
 A Flexdashbord + Shiny in R for visualization NYC taxi pickups and dropoffs.
 
