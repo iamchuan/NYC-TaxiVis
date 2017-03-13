@@ -1,0 +1,265 @@
+---
+title: "NYC TaxiVis"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    source_code: https://github.com/iamchuan/NYC-TaxiVis
+runtime: shiny
+---
+
+```{r global, include=FALSE}
+library(flexdashboard)
+library(data.table)
+library(dplyr)
+library(googleVis)
+library(ggplot2)
+library(leaflet)
+library(leaflet.extras)
+library(RSQLite)
+
+# source("db_connector.R")
+dbname = "./data/nyc_taxi.sqlite"
+
+pickup_fields <- paste("tpep_pickup_datetime",
+                       "pickup_longitude",
+                       "pickup_latitude",
+                       "passenger_count", 
+                       sep = ", ")
+droppff_fields <- paste("tpep_dropoff_datetime",
+                        "dropoff_longitude",
+                        "dropoff_latitude",
+                        "passenger_count", 
+                        sep = ", ")
+
+```
+
+```{r setup, include=FALSE}
+conn <- dbConnect(drv = RSQLite::SQLite(), dbname = "./data/nyc_taxi.sqlite")
+  
+getDefaultReactiveDomain()$onSessionEnded(function() {
+  dbDisconnect(conn)
+})
+
+pickups <- reactive({
+  query <- paste("SELECT",
+                 pickup_fields,
+                 "FROM", 
+                 strftime(input$date, format = "'%Y-%m'"),
+                 paste0("WHERE tpep_pickup_datetime LIKE '",
+                        input$date,
+                        "%'"))
+  setkey(data.table(dbGetQuery(conn = conn,
+                               statement = query)),
+         tpep_pickup_datetime)
+})
+dropoffs <- reactive({
+  query <- paste("SELECT",
+                 droppff_fields,
+                 "FROM", 
+                 strftime(input$date, format = "'%Y-%m'"),
+                 paste0("WHERE tpep_dropoff_datetime like '",
+                        input$date,
+                        "%'"))
+  setkey(data.table(dbGetQuery(conn = conn,
+                               statement = query)),
+         tpep_dropoff_datetime)
+})
+
+hour_pickup <- reactive(pickups()[hour(tpep_pickup_datetime) == input$hour])
+hour_dropoff <- reactive(dropoffs()[hour(tpep_dropoff_datetime) == input$hour])
+
+taxi_selected <- reactive({
+  if(input$type == "pickup") {
+    hour_pickup() 
+  } else {
+    hour_dropoff()
+  }
+})
+```
+
+Sidebar {.sidebar}
+=======================================================================
+
+### Select date and time range
+
+
+```{r}
+dateInput(inputId = "date",
+          label = "Select Date", 
+          value = "2016-01-01", 
+          min = "2016-01-01",
+          max = "2016-03-31") 
+
+sliderInput(inputId = "hour", 
+            label = "Select Time", 
+            value = 0, 
+            min = 0, 
+            max = 23, 
+            step = 1, 
+            ticks = FALSE, 
+            animate = TRUE)
+
+radioButtons(inputId = "type", 
+             label = "Choose Type", 
+             choices = c("pickup", "dropoff"), 
+             selected = "pickup")
+
+```
+
+
+Dashboard
+=======================================================================
+
+Row
+-----------------------------------------------------------------------
+
+### Hourly Pickup Rate {.value-box}
+
+```{r}
+renderValueBox({
+  total <- hour_pickup() %>%
+    .[,.N]
+  valueBox(
+    value = round(total),
+    icon = "fa-cloud-upload",
+    color = ifelse(total < 9000, 
+                   "primary",
+                   ifelse(total < 18000,
+                          "warning", 
+                          "danger"))
+  )
+})
+```
+
+### Hourly Dropoff Rate {.value-box}
+
+```{r}
+renderValueBox({
+  total <- hour_dropoff() %>%
+    .[,.N]
+  valueBox(
+    value = round(total),
+    icon = "fa-cloud-download",
+    color = ifelse(total < 9000, 
+                   "primary",
+                   ifelse(total < 18000,
+                          "warning", 
+                          "danger"))
+  )
+})
+```
+
+### Hourly Passengers{.value-box}
+
+```{r}
+renderValueBox({
+  total = taxi_selected() %>%
+      .[, sum(passenger_count)]
+  valueBox(
+    value = paste(input$type, round(total)),
+    icon = "fa-users",
+    color = ifelse(total < 18000, 
+                   "primary",
+                   ifelse(total < 36000,
+                          "warning", 
+                          "danger"))
+  )
+})
+```
+
+
+Row
+-----------------------------------------------------------------------
+
+### Pickup / Dropoff Heatmap {data-width=700}
+
+```{r}
+fillCol(
+  leafletOutput("map")
+)
+
+output$map <- renderLeaflet({
+  map <- leaflet() %>%
+    setView(lng = -73.9712,lat = 40.7831, zoom = 12) %>%
+    addProviderTiles(providers$CartoDB.DarkMatter) %>%
+    addWebGLHeatmap(data = hour_pickup()[sample(.N, size = .N/4)],
+                    lng = ~pickup_longitude,
+                    lat = ~pickup_latitude,
+                    size = 300,
+                    group = "pickups") %>%
+    addWebGLHeatmap(data = hour_dropoff()[sample(.N, size = .N/4)],
+                    lng = ~dropoff_longitude,
+                    lat = ~dropoff_latitude,
+                    size = 300,
+                    group = "dropoffs") %>%
+    addLayersControl(baseGroups = c("pickups", "dropoffs"))
+})
+
+# observe({
+#   leafletProxy("map", data = taxi_selected()[sample(.N, size = .N/10)]) %>%
+#     clearGroup("heatmap") %>%
+#     addWebGLHeatmap(lng = ~longitude,
+#                     lat = ~latitude,
+#                     size = 200,
+#                     group = "heatmap")
+# })
+```
+
+### Statistics {data-width=340}
+
+```{r}
+fillCol(
+  htmlOutput("taxi"),
+  htmlOutput("psgr")
+)
+
+output$taxi <- renderGvis({
+  hour_pickup <- pickups()[, .(pickup = .N), by=hour(tpep_pickup_datetime)]
+  hour_dropoff <- dropoffs()[, .(dropoff = .N), by=hour(tpep_dropoff_datetime)]
+  taxi <- merge(hour_pickup, hour_dropoff, all=FALSE)
+  gvisSteppedAreaChart(taxi, 
+                       xvar="hour", 
+                       yvar=c("pickup", "dropoff"),
+                       options=list(title="Pickups vs. Dropoffs",
+                                    legend="{ position: 'top'}"))
+})
+
+output$psgr <- renderGvis({
+  psgr_pickup <- pickups()[, .(pickup = sum(passenger_count)), by=hour(tpep_pickup_datetime)]
+  psgr_dropoff <- dropoffs()[, .(dropoff = sum(passenger_count)), by=hour(tpep_dropoff_datetime)]
+  psgr <- merge(psgr_pickup, psgr_dropoff, all=FALSE)
+  gvisSteppedAreaChart(psgr, 
+                       xvar="hour", 
+                       yvar=c("pickup", "dropoff"),
+                       options=list(title="Passengers",
+                                    legend="{ position: 'top'}"))
+})
+
+```
+
+
+Data
+=======================================================================
+
+### Data
+
+```{r}
+DT::renderDataTable({
+  DT::datatable(taxi_selected())
+})
+```
+
+About
+=======================================================================
+
+**NYC TaxiVis**
+
+An interactive dashboard for visualization NYC taxi pickups and dropoffs, using [flexdashboard](https://rstudio.github.io/flexdashboard) and [shiny](http://shiny.rstudio.com).
+
+The data sets used in this App were downloaded from the [NYC Taxi and Limousine Commission (TLC)](http://www.nyc.gov/html/tlc/html/about/trip_record_data.shtml).The TLC trip data were collected and provided to the TLC by technology providers authorized under the Taxicab & Livery Passenger Enhancement Programs (TPEP/LPEP). The yellow and green taxi trip records include fields capturing pick-up and drop-off dates/times, pick-up and drop-off locations, trip distances, itemized fares, rate types, payment types, and driver-reported passenger counts.
+
+&copy; Chuan Hong ([linkedIn](https://www.linkedin.com/in/iamchuan/))
+
+<center><img src="http://www.nyc.gov/html/tlc/images/features/feature_photo_about.jpg" style="width:500px; height=250px" ></center>
+
+

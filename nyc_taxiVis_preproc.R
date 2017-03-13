@@ -1,8 +1,11 @@
-setwd("~/Workspace/flexdashboard/taxiVis/data/")
+setwd("~/Desktop/GitHub/taxiVis/data/")
 rm(list = ls())
+
+# load libraries
 library(data.table)
 library(dplyr)
 
+# create fuc for converting .csv to .rds
 csv_to_rds <- function(csv_path, rds_path, overwrite = FALSE) {
   if(!overwrite && file.exists(rds_path)) {
     cat(rds_path, "exists,", csv_path, "skipped")
@@ -10,7 +13,8 @@ csv_to_rds <- function(csv_path, rds_path, overwrite = FALSE) {
     taxi_data <- fread(csv_path,
                        sep = ",",
                        header = TRUE,
-                       select = c(2,3,4,6,7,10,11))
+                       # Only select time, geo, passengerNum
+                       select = c(2,3,4,6,7,10,11))  
     saveRDS(object = taxi_data, 
             file = rds_path)
     rm(taxi_data)
@@ -18,6 +22,7 @@ csv_to_rds <- function(csv_path, rds_path, overwrite = FALSE) {
   }
 }
 
+# iterate .csv and save in .rds
 for(csv_path in dir()[grepl("yellow_tripdata_", dir())]) {
   rds_path = sub(pattern = "yellow_tripdata", 
                  replacement = "taxi", 
@@ -27,9 +32,3 @@ for(csv_path in dir()[grepl("yellow_tripdata_", dir())]) {
   csv_to_rds(csv_path = csv_path,
              rds_path = rds_path)
 }
-
-taxidata[,tpep_pickup_datetime := as.POSIXct(taxidata$tpep_pickup_datetime[1:100])]
-
-
-%>%
-  setkey(, tpep_pickup_datetime)
