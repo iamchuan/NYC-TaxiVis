@@ -16,6 +16,7 @@ library(ggplot2)
 library(leaflet)
 library(leaflet.extras)
 library(RSQLite)
+library(shiny)
 
 # source("db_connector.R")
 dbname = "./data/nyc_taxi.sqlite"
@@ -34,10 +35,10 @@ droppff_fields <- paste("tpep_dropoff_datetime",
 ```
 
 ```{r setup, include=FALSE}
-conn <- dbConnect(drv = RSQLite::SQLite(), dbname = "./data/nyc_taxi.sqlite")
+conn <- DBI::dbConnect(drv = RSQLite::SQLite(), dbname = "./data/nyc_taxi.sqlite")
   
-getDefaultReactiveDomain()$onSessionEnded(function() {
-  dbDisconnect(conn)
+shiny::getDefaultReactiveDomain()$onSessionEnded(function() {
+  DBI::dbDisconnect(conn)
 })
 
 pickups <- reactive({
