@@ -13,7 +13,7 @@ Get data from [NYC Taxi and Limousine Commission (TLC)] (http://www.nyc.gov/html
 #### Tools: 
 
 * SQL, R ( flexdashboard, shiny, data.table, etc.)
-* Code available on [GitHub](https://github.com/iamchuan/NYC-TaxiVis)
+* Blog post available on [Chuan's blog](https://iamchuan.com/2017/03/22/dashboard-nyc-yellow-taxi-trips/)
 
 ***
 
