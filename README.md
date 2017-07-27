@@ -1,6 +1,6 @@
 ![](figure/YellowTaxiVis.png)
 
-## [NYC Yellow TaxiVis](http://72.225.128.93:3838/taxiVis/nyc_taxiVis.Rmd)
+## [NYC Yellow TaxiVis](http://52.43.76.15:3838/taxiVis/nyc_taxiVis.Rmd)
 
 Dashboard: Visualization of NYC Yellow Taxi Pickups and Dropoffs.
 
